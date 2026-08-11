@@ -46,8 +46,14 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
     payload = {
         "name": nome_documento,
         "base64_pdf": f"data:application/pdf;base64,{pdf_base64}",
-        "sandbox": False, # Mude para False apenas quando assinar um plano pago da ZapSign
-        "signers": [{"name": nome_socio, "require_selfie": False}]
+        "sandbox": False, # False = Validade Jurídica Oficial sem marca d'água de teste
+        "signers": [
+            {
+                "name": nome_socio,
+                "require_selfie": False,
+                "auth_mode": "token"  # <-- AQUI ESTÁ A MAGIA! Exige o código por E-mail/WhatsApp
+            }
+        ]
     }
     
     headers = {"Authorization": f"Bearer {ZAPSIGN_TOKEN}", "Content-Type": "application/json"}
