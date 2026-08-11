@@ -51,7 +51,7 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
             {
                 "name": nome_socio,
                 "require_selfie": False,
-                "auth_mode": "token"  # <-- AQUI ESTÁ A MAGIA! Exige o código por E-mail/WhatsApp
+                "auth_mode": "assinaturaTela-tokenEmail"  # <-- AQUI ESTÁ A MAGIA! Exige o código por E-mail/WhatsApp
             }
         ]
     }
