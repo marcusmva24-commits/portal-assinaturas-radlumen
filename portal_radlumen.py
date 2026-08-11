@@ -2,47 +2,41 @@ import streamlit as st
 import requests
 import json
 import base64
+import os
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 
 # --- CONFIGURAÇÕES E SEGREDOS ---
-# Puxa o Token com segurança dos Secrets do Streamlit
 ZAPSIGN_TOKEN = st.secrets["ZAPSIGN_TOKEN"]
+FICHEIRO_BD = "banco_assinaturas.json"
 
 st.set_page_config(page_title="Portal Radlumen", page_icon="📝", layout="centered")
 
-# --- CONEXÃO COM GOOGLE SHEETS ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
+# --- SENHAS FIXAS E BLINDADAS DOS SÓCIOS ---
 def carregar_usuarios():
-    try:
-        df = conn.read(worksheet="usuarios", ttl=0)
-        return dict(zip(df['usuario'].astype(str), df['senha'].astype(str)))
-    except Exception:
-        return {
-            "Administrador": "admin123",
-            "Marcus": "1234", "Dayra": "1234", "Cassio": "1234", 
-            "Otavio": "1234", "Camila": "1234", "Rafaella": "1234", 
-            "Anderson": "1234", "Lucas": "1234", "Thaciany": "1234"
-        }
+    # Senhas únicas de 4 dígitos para cada sócio (Permanentes)
+    return {
+        "Administrador": "admin123",
+        "Marcus": "7492",
+        "Dayra": "3815",
+        "Cassio": "5920",
+        "Otavio": "8146",
+        "Camila": "2639",
+        "Rafaella": "4051",
+        "Anderson": "6718",
+        "Lucas": "9304",
+        "Thaciany": "1583"
+    }
 
-def guardar_usuarios(usuarios_dict):
-    df = pd.DataFrame(list(usuarios_dict.items()), columns=['usuario', 'senha'])
-    conn.update(worksheet="usuarios", data=df)
-
+# --- BANCO DE DADOS DE ASSINATURAS (LOCAL) ---
 def carregar_bd():
-    try:
-        df = conn.read(worksheet="assinaturas", ttl=0)
-        return df.to_dict(orient="records")
-    except Exception:
+    if not os.path.exists(FICHEIRO_BD):
         return []
+    with open(FICHEIRO_BD, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def guardar_bd(dados_lista):
-    if not dados_lista:
-        df = pd.DataFrame(columns=['id', 'nome_doc', 'socio', 'status', 'link_assinatura', 'doc_token'])
-    else:
-        df = pd.DataFrame(dados_lista)
-    conn.update(worksheet="assinaturas", data=df)
+def guardar_bd(dados):
+    with open(FICHEIRO_BD, "w", encoding="utf-8") as f:
+        json.dump(dados, f, indent=4, ensure_ascii=False)
 
 # --- INTEGRAÇÃO ZAPSIGN ---
 def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
@@ -52,7 +46,7 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
     payload = {
         "name": nome_documento,
         "base64_pdf": f"data:application/pdf;base64,{pdf_base64}",
-        "sandbox": True, 
+        "sandbox": True, # Mude para False apenas quando assinar um plano pago da ZapSign
         "signers": [{"name": nome_socio, "require_selfie": False}]
     }
     
@@ -97,6 +91,7 @@ if st.session_state["usuario_logado"] is None:
             usuario_digitado = usuario_input.strip().lower()
             usuario_encontrado = None
             
+            # Compara ignorando maiúsculas e minúsculas
             for user_key, pass_val in usuarios_db.items():
                 if str(user_key).lower() == usuario_digitado:
                     if str(pass_val) == str(senha_input):
@@ -121,7 +116,7 @@ else:
     # --- ÁREA DO ADMINISTRADOR ---
     if usuario_atual == "Administrador":
         st.title("⚙️ Painel de Administração")
-        aba1, aba2, aba3 = st.tabs(["📤 Enviar Documento", "📋 Controle Geral", "👥 Gestão de Sócios"])
+        aba1, aba2 = st.tabs(["📤 Enviar Documento", "📋 Controle & Backup"])
         
         lista_socios = [u for u in usuarios_db.keys() if u != "Administrador"]
 
@@ -155,20 +150,33 @@ else:
                     st.warning("Preencha a descrição e anexe o PDF antes de enviar.")
 
         with aba2:
-            st.markdown("### Painel de Assinaturas")
-            if st.button("🔄 Sincronizar com Cartório Digital", use_container_width=True):
-                with st.spinner("Buscando atualizações..."):
-                    houve_mod = False
-                    for doc in bd_atual:
-                        if doc["status"] == "Pendente":
-                            status_zap = verificar_status_zapsign(doc["doc_token"])
-                            if status_zap == "signed":
-                                doc["status"] = "Assinado"
-                                houve_mod = True
-                    if houve_mod:
-                        guardar_bd(bd_atual)
-                st.success("Painel atualizado!")
+            st.markdown("### Painel de Assinaturas e Backup")
+            
+            col_sync, col_dl = st.columns(2)
+            with col_sync:
+                if st.button("🔄 Atualizar Status (ZapSign)", use_container_width=True):
+                    with st.spinner("Buscando atualizações..."):
+                        houve_mod = False
+                        for doc in bd_atual:
+                            if doc["status"] == "Pendente":
+                                status_zap = verificar_status_zapsign(doc["doc_token"])
+                                if status_zap == "signed":
+                                    doc["status"] = "Assinado"
+                                    houve_mod = True
+                        if houve_mod:
+                            guardar_bd(bd_atual)
+                    st.success("Painel atualizado!")
 
+            with col_dl:
+                # Botão para baixar backup em Excel/CSV
+                if len(bd_atual) > 0:
+                    df_backup = pd.DataFrame(bd_atual)
+                    csv_backup = df_backup.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Baixar Relatório (.CSV)", data=csv_backup, file_name="relatorio_assinaturas_radlumen.csv", mime="text/csv", use_container_width=True)
+                else:
+                    st.button("📥 Baixar Relatório (.CSV)", disabled=True, use_container_width=True)
+
+            st.markdown("---")
             if len(bd_atual) > 0:
                 for doc in reversed(bd_atual):
                     if doc["status"] == "Assinado":
@@ -176,43 +184,7 @@ else:
                     else:
                         st.warning(f"⏳ **{doc['socio']}** pendente: {doc['nome_doc']}")
             else:
-                st.write("Nenhum documento no sistema.")
-
-        with aba3:
-            st.markdown("### Gerenciar Acessos")
-            st.write("Aqui você pode visualizar as senhas atuais e alterá-las caso alguém esqueça.")
-            
-            for user, pwd in usuarios_db.items():
-                if user == "Administrador": continue
-                
-                col1, col2, col3 = st.columns([2, 2, 1])
-                col1.write(f"👤 **{user}**")
-                nova_senha = col2.text_input(f"Senha de {user}", value=str(pwd), key=f"pwd_{user}", label_visibility="collapsed")
-                
-                if col3.button("Salvar", key=f"btn_{user}"):
-                    usuarios_db[user] = nova_senha
-                    guardar_usuarios(usuarios_db)
-                    st.success(f"Senha de {user} atualizada!")
-            
-            st.divider()
-            st.markdown("### ➕ Adicionar Novo Sócio")
-            st.write("A empresa cresceu? Adicione o novo sócio aqui para ele aparecer nas listas de envio.")
-            
-            novo_nome = st.text_input("Primeiro Nome do Sócio")
-            novo_pwd = st.text_input("Criar Senha Inicial")
-            
-            if st.button("Cadastrar Usuário"):
-                if novo_nome and novo_pwd:
-                    nome_formatado = novo_nome.strip().capitalize()
-                    if nome_formatado in usuarios_db:
-                        st.error("Este usuário já existe!")
-                    else:
-                        usuarios_db[nome_formatado] = novo_pwd
-                        guardar_usuarios(usuarios_db)
-                        st.success(f"Sócio {nome_formatado} adicionado com sucesso!")
-                        st.rerun()
-                else:
-                    st.warning("Preencha o nome e a senha.")
+                st.write("Nenhum documento no sistema ainda.")
 
     # --- ÁREA DO SÓCIO (VISÃO CELULAR) ---
     else:
@@ -221,14 +193,14 @@ else:
         with st.spinner("Atualizando seus documentos..."):
             houve_atualizacao = False
             for doc in bd_atual:
-                if str(doc["socio"]) == str(usuario_atual) and doc["status"] == "Pendente":
+                if str(doc["socio"]).lower() == str(usuario_atual).lower() and doc["status"] == "Pendente":
                     if verificar_status_zapsign(doc["doc_token"]) == "signed":
                         doc["status"] = "Assinado"
                         houve_atualizacao = True
             if houve_atualizacao:
                 guardar_bd(bd_atual)
         
-        docs_do_socio = [d for d in bd_atual if str(d["socio"]) == str(usuario_atual)]
+        docs_do_socio = [d for d in bd_atual if str(d["socio"]).lower() == str(usuario_atual).lower()]
         
         st.markdown("#### ⏳ Pendentes de Assinatura")
         tem_pendente = False
