@@ -46,7 +46,7 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
     payload = {
         "name": nome_documento,
         "base64_pdf": f"data:application/pdf;base64,{pdf_base64}",
-        "sandbox": True, # Mude para False apenas quando assinar um plano pago da ZapSign
+        "sandbox": False, # Mude para False apenas quando assinar um plano pago da ZapSign
         "signers": [{"name": nome_socio, "require_selfie": False}]
     }
     
