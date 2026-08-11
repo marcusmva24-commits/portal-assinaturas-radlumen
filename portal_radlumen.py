@@ -7,7 +7,7 @@ import os
 # --- CONFIGURAÇÕES GERAIS ---
 ZAPSIGN_TOKEN = "6bbab4c0-3ce4-4b8a-a5d2-a0d6e19f2ee29c297fb3-e72f-4bbd-859b-92e79f2b1465"
 FICHEIRO_BD = "banco_assinaturas.json"
-FICHEIRO_USUARIOS = "banco_usuarios.json" # NOVO: Banco de dados de acessos
+FICHEIRO_USUARIOS = "banco_usuarios.json"
 
 st.set_page_config(page_title="Portal Radlumen", page_icon="📝", layout="centered")
 
@@ -23,7 +23,6 @@ def guardar_bd(dados):
         json.dump(dados, f, indent=4, ensure_ascii=False)
 
 def carregar_usuarios():
-    # Se o arquivo não existir, ele cria com os dados padrão do seu time
     if not os.path.exists(FICHEIRO_USUARIOS):
         usuarios_padrao = {
             "Administrador": "admin123",
@@ -79,7 +78,6 @@ bd_atual = carregar_bd()
 if st.session_state["usuario_logado"] is None:
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    # Criando colunas para deixar o formulário no centro e estreito
     col_esq, col_meio, col_dir = st.columns([1, 2, 1])
     
     with col_meio:
@@ -87,16 +85,24 @@ if st.session_state["usuario_logado"] is None:
         st.markdown("<p style='text-align: center; color: gray;'>Acesso Restrito</p>", unsafe_allow_html=True)
         st.markdown("---")
         
-        usuario_input = st.text_input("Usuário (Primeiro Nome ou Administrador)")
+        # Apenas 'Usuário' como rótulo
+        usuario_input = st.text_input("Usuário")
         senha_input = st.text_input("Senha", type="password")
         
         if st.button("Entrar no Sistema", use_container_width=True):
-            # Formata o texto para a primeira letra ficar maiúscula (evita erro de digitação)
-            usuario_formatado = usuario_input.strip().capitalize()
+            usuario_digitado = usuario_input.strip().lower()
+            usuario_encontrado = None
             
-            if usuario_formatado in usuarios_db and usuarios_db[usuario_formatado] == senha_input:
-                st.session_state["usuario_logado"] = usuario_formatado
-                st.rerun() # Recarrega a página logado
+            # Verificação insensível a maiúsculas e minúsculas
+            for user_key, pass_val in usuarios_db.items():
+                if user_key.lower() == usuario_digitado:
+                    if pass_val == senha_input:
+                        usuario_encontrado = user_key
+                    break
+            
+            if usuario_encontrado:
+                st.session_state["usuario_logado"] = usuario_encontrado
+                st.rerun()
             else:
                 st.error("❌ Usuário ou senha incorretos. Tente novamente.")
 
@@ -104,7 +110,6 @@ if st.session_state["usuario_logado"] is None:
 else:
     usuario_atual = st.session_state["usuario_logado"]
     
-    # Botão de Sair na barra lateral para limpar a tela
     st.sidebar.markdown(f"### Olá, {usuario_atual}")
     if st.sidebar.button("🚪 Sair da Conta"):
         st.session_state["usuario_logado"] = None
@@ -115,7 +120,6 @@ else:
         st.title("⚙️ Painel de Administração")
         aba1, aba2, aba3 = st.tabs(["📤 Enviar Documento", "📋 Controle Geral", "👥 Gestão de Sócios"])
         
-        # Gera a lista de sócios dinamicamente (tirando o Administrador da lista)
         lista_socios = [u for u in usuarios_db.keys() if u != "Administrador"]
 
         with aba1:
@@ -172,9 +176,8 @@ else:
             st.markdown("### Gerenciar Acessos")
             st.write("Aqui você pode visualizar as senhas atuais e alterá-las caso alguém esqueça.")
             
-            # Tabela editável de senhas
             for user, pwd in usuarios_db.items():
-                if user == "Administrador": continue # Esconde a senha do próprio admin por segurança
+                if user == "Administrador": continue
                 
                 col1, col2, col3 = st.columns([2, 2, 1])
                 col1.write(f"👤 **{user}**")
