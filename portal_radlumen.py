@@ -2,42 +2,47 @@ import streamlit as st
 import requests
 import json
 import base64
-import os
+import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 
-# --- CONFIGURAÇÕES GERAIS ---
-ZAPSIGN_TOKEN = "6bbab4c0-3ce4-4b8a-a5d2-a0d6e19f2ee29c297fb3-e72f-4bbd-859b-92e79f2b1465"
-FICHEIRO_BD = "banco_assinaturas.json"
-FICHEIRO_USUARIOS = "banco_usuarios.json"
+# --- CONFIGURAÇÕES E SEGREDOS ---
+# Puxa o Token com segurança dos Secrets do Streamlit
+ZAPSIGN_TOKEN = st.secrets["ZAPSIGN_TOKEN"]
 
 st.set_page_config(page_title="Portal Radlumen", page_icon="📝", layout="centered")
 
-# --- GERENCIAMENTO DE BANCO DE DADOS ---
-def carregar_bd():
-    if not os.path.exists(FICHEIRO_BD):
-        return []
-    with open(FICHEIRO_BD, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def guardar_bd(dados):
-    with open(FICHEIRO_BD, "w", encoding="utf-8") as f:
-        json.dump(dados, f, indent=4, ensure_ascii=False)
+# --- CONEXÃO COM GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 def carregar_usuarios():
-    if not os.path.exists(FICHEIRO_USUARIOS):
-        usuarios_padrao = {
+    try:
+        df = conn.read(worksheet="usuarios", ttl=0)
+        return dict(zip(df['usuario'].astype(str), df['senha'].astype(str)))
+    except Exception:
+        return {
             "Administrador": "admin123",
             "Marcus": "1234", "Dayra": "1234", "Cassio": "1234", 
             "Otavio": "1234", "Camila": "1234", "Rafaella": "1234", 
             "Anderson": "1234", "Lucas": "1234", "Thaciany": "1234"
         }
-        guardar_usuarios(usuarios_padrao)
-        return usuarios_padrao
-    with open(FICHEIRO_USUARIOS, "r", encoding="utf-8") as f:
-        return json.load(f)
 
-def guardar_usuarios(dados):
-    with open(FICHEIRO_USUARIOS, "w", encoding="utf-8") as f:
-        json.dump(dados, f, indent=4, ensure_ascii=False)
+def guardar_usuarios(usuarios_dict):
+    df = pd.DataFrame(list(usuarios_dict.items()), columns=['usuario', 'senha'])
+    conn.update(worksheet="usuarios", data=df)
+
+def carregar_bd():
+    try:
+        df = conn.read(worksheet="assinaturas", ttl=0)
+        return df.to_dict(orient="records")
+    except Exception:
+        return []
+
+def guardar_bd(dados_lista):
+    if not dados_lista:
+        df = pd.DataFrame(columns=['id', 'nome_doc', 'socio', 'status', 'link_assinatura', 'doc_token'])
+    else:
+        df = pd.DataFrame(dados_lista)
+    conn.update(worksheet="assinaturas", data=df)
 
 # --- INTEGRAÇÃO ZAPSIGN ---
 def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
@@ -85,7 +90,6 @@ if st.session_state["usuario_logado"] is None:
         st.markdown("<p style='text-align: center; color: gray;'>Acesso Restrito</p>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Apenas 'Usuário' como rótulo
         usuario_input = st.text_input("Usuário")
         senha_input = st.text_input("Senha", type="password")
         
@@ -93,10 +97,9 @@ if st.session_state["usuario_logado"] is None:
             usuario_digitado = usuario_input.strip().lower()
             usuario_encontrado = None
             
-            # Verificação insensível a maiúsculas e minúsculas
             for user_key, pass_val in usuarios_db.items():
-                if user_key.lower() == usuario_digitado:
-                    if pass_val == senha_input:
+                if str(user_key).lower() == usuario_digitado:
+                    if str(pass_val) == str(senha_input):
                         usuario_encontrado = user_key
                     break
             
@@ -155,12 +158,15 @@ else:
             st.markdown("### Painel de Assinaturas")
             if st.button("🔄 Sincronizar com Cartório Digital", use_container_width=True):
                 with st.spinner("Buscando atualizações..."):
+                    houve_mod = False
                     for doc in bd_atual:
                         if doc["status"] == "Pendente":
                             status_zap = verificar_status_zapsign(doc["doc_token"])
                             if status_zap == "signed":
                                 doc["status"] = "Assinado"
-                    guardar_bd(bd_atual)
+                                houve_mod = True
+                    if houve_mod:
+                        guardar_bd(bd_atual)
                 st.success("Painel atualizado!")
 
             if len(bd_atual) > 0:
@@ -181,7 +187,7 @@ else:
                 
                 col1, col2, col3 = st.columns([2, 2, 1])
                 col1.write(f"👤 **{user}**")
-                nova_senha = col2.text_input(f"Senha de {user}", value=pwd, key=f"pwd_{user}", label_visibility="collapsed")
+                nova_senha = col2.text_input(f"Senha de {user}", value=str(pwd), key=f"pwd_{user}", label_visibility="collapsed")
                 
                 if col3.button("Salvar", key=f"btn_{user}"):
                     usuarios_db[user] = nova_senha
@@ -215,14 +221,14 @@ else:
         with st.spinner("Atualizando seus documentos..."):
             houve_atualizacao = False
             for doc in bd_atual:
-                if doc["socio"] == usuario_atual and doc["status"] == "Pendente":
+                if str(doc["socio"]) == str(usuario_atual) and doc["status"] == "Pendente":
                     if verificar_status_zapsign(doc["doc_token"]) == "signed":
                         doc["status"] = "Assinado"
                         houve_atualizacao = True
             if houve_atualizacao:
                 guardar_bd(bd_atual)
         
-        docs_do_socio = [d for d in bd_atual if d["socio"] == usuario_atual]
+        docs_do_socio = [d for d in bd_atual if str(d["socio"]) == str(usuario_atual)]
         
         st.markdown("#### ⏳ Pendentes de Assinatura")
         tem_pendente = False
