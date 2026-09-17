@@ -194,9 +194,9 @@ else:
                             st.warning(f"⏳ **{doc['socio']}** pendente: {doc['nome_doc']}")
                             
                     with col_botao:
-                        # NOVO BOTÃO DE EXCLUSÃO INDIVIDUAL
-                        if st.button("🗑️ Excluir", key=f"del_{doc['id']}", use_container_width=True):
-                            bd_atual = [d for d in bd_atual if d["id"] != doc["id"]]
+                        # NOVO BOTÃO DE EXCLUSÃO USANDO O TOKEN ÚNICO DA ZAPSIGN
+                        if st.button("🗑️ Excluir", key=f"del_{doc['doc_token']}", use_container_width=True):
+                            bd_atual = [d for d in bd_atual if d["doc_token"] != doc["doc_token"]]
                             guardar_bd(bd_atual)
                             st.rerun()
             else:
