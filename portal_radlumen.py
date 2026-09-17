@@ -51,7 +51,7 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
             {
                 "name": nome_socio,
                 "require_selfie": False,
-                "auth_mode": "assinaturaTela-tokenEmail"  # <-- AQUI ESTÁ A MAGIA! Exige o código por E-mail/WhatsApp
+                "auth_mode": "assinaturaTela-tokenEmail"  # Exige o código por E-mail
             }
         ]
     }
@@ -185,10 +185,20 @@ else:
             st.markdown("---")
             if len(bd_atual) > 0:
                 for doc in reversed(bd_atual):
-                    if doc["status"] == "Assinado":
-                        st.info(f"✅ **{doc['socio']}** assinou: {doc['nome_doc']}")
-                    else:
-                        st.warning(f"⏳ **{doc['socio']}** pendente: {doc['nome_doc']}")
+                    col_texto, col_botao = st.columns([4, 1])
+                    
+                    with col_texto:
+                        if doc["status"] == "Assinado":
+                            st.info(f"✅ **{doc['socio']}** assinou: {doc['nome_doc']}")
+                        else:
+                            st.warning(f"⏳ **{doc['socio']}** pendente: {doc['nome_doc']}")
+                            
+                    with col_botao:
+                        # NOVO BOTÃO DE EXCLUSÃO INDIVIDUAL
+                        if st.button("🗑️ Excluir", key=f"del_{doc['id']}", use_container_width=True):
+                            bd_atual = [d for d in bd_atual if d["id"] != doc["id"]]
+                            guardar_bd(bd_atual)
+                            st.rerun()
             else:
                 st.write("Nenhum documento no sistema ainda.")
 
