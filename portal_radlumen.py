@@ -46,8 +46,7 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
     payload = {
         "name": nome_documento,
         "base64_pdf": f"data:application/pdf;base64,{pdf_base64}",
-        "sandbox": False, # False = Validade Jurídica Oficial sem marca d'água de teste
-        "signers": [
+            "signers": [
             {
                 "name": nome_socio,
                 "require_selfie": False,
