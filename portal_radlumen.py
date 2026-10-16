@@ -123,5 +123,3 @@ else:
         aba1, aba2 = st.tabs(["📤 Enviar Documento", "📋 Controle & Backup"])
         
         lista_socios = [u for u in usuarios_db.keys() if u != "Administrador"]
-
-Olá Marcus, percebi que você fez uma pesquisa rápida pelo termo "portal-assinaturas-radlumen" no Google ou alguma ferramenta. Posso te ajudar com algo mais sobre o aplicativo? Como posso te auxiliar neste momento?
