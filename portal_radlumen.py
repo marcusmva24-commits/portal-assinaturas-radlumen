@@ -13,7 +13,6 @@ st.set_page_config(page_title="Portal Radlumen", page_icon="📝", layout="cente
 
 # --- SENHAS FIXAS E BLINDADAS DOS SÓCIOS ---
 def carregar_usuarios():
-    # Senhas únicas de 4 dígitos para cada sócio (Permanentes)
     return {
         "Administrador": "admin123",
         "Marcus": "7492",
@@ -38,7 +37,7 @@ def guardar_bd(dados):
     with open(FICHEIRO_BD, "w", encoding="utf-8") as f:
         json.dump(dados, f, indent=4, ensure_ascii=False)
 
-# --- INTEGRAÇÃO ZAPSIGN ---
+# --- INTEGRAÇÃO ZAPSIGN (ATUALIZADA SEM SANDBOX) ---
 def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
     url = "https://api.zapsign.com.br/api/v1/docs/"
     pdf_base64 = base64.b64encode(bytes_pdf).decode('utf-8')
@@ -50,7 +49,7 @@ def enviar_para_zapsign(nome_documento, bytes_pdf, nome_socio):
             {
                 "name": nome_socio,
                 "require_selfie": False,
-                "auth_mode": "assinaturaTela-tokenEmail"  # Exige o código por E-mail
+                "auth_mode": "assinaturaTela-tokenEmail"
             }
         ]
     }
@@ -123,3 +122,111 @@ else:
         aba1, aba2 = st.tabs(["📤 Enviar Documento", "📋 Controle & Backup"])
         
         lista_socios = [u for u in usuarios_db.keys() if u != "Administrador"]
+
+        with aba1:
+            st.markdown("### Disparar Documento")
+            socio_escolhido = st.selectbox("Sócio Destinatário:", lista_socios)
+            nome_doc = st.text_input("Descrição (Ex: Pró-labore + Lucros - Agosto/2026)")
+            ficheiro_pdf = st.file_uploader("Anexar PDF", type=["pdf"])
+            
+            if st.button("🚀 Gerar Link Seguro e Enviar", use_container_width=True):
+                if ficheiro_pdf and nome_doc:
+                    with st.spinner('Criptografando e enviando para ZapSign...'):
+                        bytes_pdf = ficheiro_pdf.read()
+                        resultado = enviar_para_zapsign(nome_doc, bytes_pdf, socio_escolhido)
+                        
+                        if resultado["sucesso"]:
+                            novo_registo = {
+                                "id": len(bd_atual) + 1,
+                                "nome_doc": nome_doc,
+                                "socio": socio_escolhido,
+                                "status": "Pendente",
+                                "link_assinatura": resultado["link_assinatura"],
+                                "doc_token": resultado["doc_token"]
+                            }
+                            bd_atual.append(novo_registo)
+                            guardar_bd(bd_atual)
+                            st.success(f"Tudo certo! Documento enviado para {socio_escolhido}.")
+                        else:
+                            st.error(f"Erro: {resultado['erro']}")
+                else:
+                    st.warning("Preencha a descrição e anexe o PDF antes de enviar.")
+
+        with aba2:
+            st.markdown("### Painel de Assinaturas e Backup")
+            
+            col_sync, col_dl = st.columns(2)
+            with col_sync:
+                if st.button("🔄 Atualizar Status (ZapSign)", use_container_width=True):
+                    with st.spinner("Buscando atualizações..."):
+                        houve_mod = False
+                        for doc in bd_atual:
+                            if doc["status"] == "Pendente":
+                                status_zap = verificar_status_zapsign(doc["doc_token"])
+                                if status_zap == "signed":
+                                    doc["status"] = "Assinado"
+                                    houve_mod = True
+                        if houve_mod:
+                            guardar_bd(bd_atual)
+                    st.success("Painel atualizado!")
+
+            with col_dl:
+                if len(bd_atual) > 0:
+                    df_backup = pd.DataFrame(bd_atual)
+                    csv_backup = df_backup.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Baixar Relatório (.CSV)", data=csv_backup, file_name="relatorio_assinaturas_radlumen.csv", mime="text/csv", use_container_width=True)
+                else:
+                    st.button("📥 Baixar Relatório (.CSV)", disabled=True, use_container_width=True)
+
+            st.markdown("---")
+            if len(bd_atual) > 0:
+                for doc in reversed(bd_atual):
+                    col_texto, col_botao = st.columns([4, 1])
+                    
+                    with col_texto:
+                        if doc["status"] == "Assinado":
+                            st.info(f"✅ **{doc['socio']}** assinou: {doc['nome_doc']}")
+                        else:
+                            st.warning(f"⏳ **{doc['socio']}** pendente: {doc['nome_doc']}")
+                            
+                    with col_botao:
+                        if st.button("🗑️ Excluir", key=f"del_{doc['doc_token']}", use_container_width=True):
+                            bd_atual = [d for d in bd_atual if d["doc_token"] != doc["doc_token"]]
+                            guardar_bd(bd_atual)
+                            st.rerun()
+            else:
+                st.write("Nenhum documento no sistema ainda.")
+
+    # --- ÁREA DO SÓCIO (VISÃO CELULAR) ---
+    else:
+        st.markdown(f"### Olá, {usuario_atual}! 👋")
+        
+        with st.spinner("Atualizando seus documentos..."):
+            houve_atualizacao = False
+            for doc in bd_atual:
+                if str(doc["socio"]).lower() == str(usuario_atual).lower() and doc["status"] == "Pendente":
+                    if verificar_status_zapsign(doc["doc_token"]) == "signed":
+                        doc["status"] = "Assinado"
+                        houve_atualizacao = True
+            if houve_atualizacao:
+                guardar_bd(bd_atual)
+        
+        docs_do_socio = [d for d in bd_atual if str(d["socio"]).lower() == str(usuario_atual).lower()]
+        
+        st.markdown("#### ⏳ Pendentes de Assinatura")
+        tem_pendente = False
+        
+        for doc in docs_do_socio:
+            if doc["status"] == "Pendente":
+                tem_pendente = True
+                st.error(f"📄 **{doc['nome_doc']}**")
+                st.link_button("👉 CLIQUE AQUI PARA ASSINAR", doc["link_assinatura"], use_container_width=True)
+                st.markdown("---")
+                
+        if not tem_pendente:
+            st.success("Tudo em dia! Você não tem nenhum documento pendente no momento. 🎉")
+            
+        st.markdown("#### ✅ Histórico")
+        for doc in docs_do_socio:
+            if doc["status"] == "Assinado":
+                st.info(f"📄 {doc['nome_doc']}")
